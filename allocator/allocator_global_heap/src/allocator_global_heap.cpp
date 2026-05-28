@@ -1,6 +1,7 @@
 #include "../include/allocator_global_heap.h"
 #include <stdexcept>
 #include <new>
+#include <cstddef>
 
 allocator_global_heap::allocator_global_heap()
 {
@@ -12,17 +13,15 @@ allocator_global_heap::~allocator_global_heap()
 
 [[nodiscard]] void *allocator_global_heap::do_allocate_sm(size_t size)
 {
-    if (size == 0)
-    {
-        throw std::invalid_argument("Size must be greater than 0");
-    }
+    size_t actual_size = (size == 0) ? 1 : size;
+    size_t header_size = alignof(std::max_align_t);
 
     std::lock_guard<std::mutex> lock(_mutex);
-    size_t total_size = size + size_t_size;
+    size_t total_size = actual_size + header_size;
     void* raw_memory = ::operator new(total_size);
     *reinterpret_cast<size_t*>(raw_memory) = size;
 
-    return reinterpret_cast<void*>(reinterpret_cast<uint8_t*>(raw_memory) + size_t_size);
+    return reinterpret_cast<void*>(reinterpret_cast<uint8_t*>(raw_memory) + header_size);
 }
 
 void allocator_global_heap::do_deallocate_sm(void *at)
@@ -32,9 +31,10 @@ void allocator_global_heap::do_deallocate_sm(void *at)
         return;
     }
 
+    size_t header_size = alignof(std::max_align_t);
     std::lock_guard<std::mutex> lock(_mutex);
 
-    void* raw_memory = reinterpret_cast<void*>(reinterpret_cast<uint8_t*>(at) - size_t_size);
+    void* raw_memory = reinterpret_cast<void*>(reinterpret_cast<uint8_t*>(at) - header_size);
 
     ::operator delete(raw_memory);
 }
